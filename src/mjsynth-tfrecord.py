@@ -33,7 +33,7 @@ The Example proto contains the following fields:
 # The list (well, string) of valid output characters
 # If any example contains a character not found here, an error will result
 # from the calls to .index in the decoder below
-out_charset=word_dict.extract_charset()
+out_charset=list(word_dict.load_dict())
 
 jpeg_data = tf.placeholder(dtype=tf.string)
 jpeg_decoder = tf.image.decode_jpeg(jpeg_data,channels=1)
@@ -81,8 +81,8 @@ def gen_data(input_base_dir, image_list_filename, output_filebase,
     image_filenames,image_texts = get_image_filenames(os.path.join(input_base_dir,
                                                        image_list_filename))
     num_digits = math.ceil( math.log10( num_shards - 1 ))
-    shard_format = '%0'+ ('%d'%num_digits) + 'd' # Use appropriate # leading zeros
-    images_per_shard = int(math.ceil( len(image_filenames) / float(num_shards) ))
+    shard_format = '%0'+ ('%d' %num_digits) + 'd' # Use appropriate # leading zeros
+    images_per_shard = int(math.ceil( len(image_filenames) / num_shards ))
     
     for i in range(start_shard,num_shards):
         start = i*images_per_shard
@@ -95,19 +95,19 @@ def gen_data(input_base_dir, image_list_filename, output_filebase,
     # Clean up writing last shard
     start = num_shards*images_per_shard
     out_filename = output_filebase+'-'+(shard_format % num_shards)+'.tfrecord'
-    print(str(i),'of',str(num_shards),'[',str(start),':]',out_filename)
+    log.info('%s of %s [%s :] export to %s' %(i , num_shards, start, out_filename))
     gen_shard(sess, input_base_dir, image_filenames[start:], out_filename,image_texts[start:])
 
     sess.close()
 
-def gen_shard(sess, input_base_dir, image_filenames, output_filename,image_texts):
+def gen_shard(sess, input_base_dir, image_filenames, output_filename, image_texts):
     """Create a TFRecord file from a list of image filenames"""
     writer = tf.python_io.TFRecordWriter(output_filename)
     
     for item,filename in enumerate(image_filenames):
         path_filename = os.path.join(input_base_dir,filename)
         if os.stat(path_filename).st_size == 0:
-            print('SKIPPING',filename)
+            log.warning('Skipping empty files: %s' %(filename, ))
             continue
         try:
             image_data,height,width = get_image(sess, path_filename)
@@ -122,11 +122,11 @@ def gen_shard(sess, input_base_dir, image_filenames, output_filename,image_texts
                                        height, width)
                      writer.write(example.SerializeToString())
             else:
-                print('SKIPPING',filename)
+                log.info('Skipping Image with too short width: %s' %(filename, ))
         except Exception as e:
-            log.debug(e)
             # Some files have bogus payloads, catch and note the error, moving on
             log.warning('Error occured during processing file %s' %(filename, ))
+            log.error(e)
     writer.close()
 
 
@@ -156,7 +156,7 @@ def get_image(sess,filename):
 
 def is_writable(image_width,text):
     """Determine whether the CNN-processed image is longer than the string"""
-    return (image_width > min_width) and (len(text) <= seq_lens[image_width])
+    return (image_width > min_width) and (len(text) <= seq_lens[image_width]) #使用查表法而非对每个输入进行计算, 提高运行速度.
     
 def get_text_and_labels(text):
     """ Extract the human-readable text and label sequence from image filename"""

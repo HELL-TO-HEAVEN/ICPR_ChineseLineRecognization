@@ -2,7 +2,7 @@ import logging, sys
 from pandas import Timestamp
 logging.basicConfig(format='%(asctime)s %(funcName)-20s: %(levelname)+8s: %(message)s', level=logging.INFO,)
 
-CHARFILE= '~/PycharmProjects/ICPR_ChineseLineRecognization/data/Train/ChineseChar'
+WORDDICT= '/home/yindong/PycharmProjects/ICPR_ChineseLineRecognization/data/train/ChineseChar'
 
 loglevel= logging.DEBUG
 log = logging.getLogger(name='global')

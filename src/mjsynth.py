@@ -21,7 +21,7 @@ import word_dict
 # The list (well, string) of valid output characters
 # If any example contains a character not found here, an error will result
 # from the calls to .index in the decoder below
-out_charset=word_dict.out_charset()
+out_charset=word_dict.load_dict()
 
 def num_classes():
     return len(out_charset)
