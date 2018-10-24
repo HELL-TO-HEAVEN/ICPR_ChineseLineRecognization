@@ -56,7 +56,7 @@ def _get_input():
     """Create a dataset of images by reading from stdin"""
 
     # Eliminate any trailing newline from filename
-    image_data = _get_image( raw_input().rstrip() )
+    image_data = _get_image( input().rstrip() )
 
     # Initializing the dataset with one image
     dataset = tf.data.Dataset.from_tensors( image_data )
@@ -100,9 +100,9 @@ def main(argv=None):
             results = next( predictions )
             pred_str = charset.label_to_string( results['labels'] )
             if FLAGS.print_score:
-                print pred_str, results['score'][0]
+                print(pred_str, results['score'][0])
             else:
-                print pred_str
+                print(pred_str)
         except StopIteration:
             sys.exit()
     

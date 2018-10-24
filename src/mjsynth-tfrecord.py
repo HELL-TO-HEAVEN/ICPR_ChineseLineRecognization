@@ -92,8 +92,9 @@ def gen_data(input_base_dir, image_list_filename, output_filebase,
         #     continue
         log.info('%s of %s [%s : %s], Output to %s' %(i, num_shards, start, end, out_filename))
         gen_shard(sess, input_base_dir, image_filenames[start:end], out_filename,image_texts[start:end])
+
     # Clean up writing last shard
-    start = num_shards*images_per_shard
+    start = num_shards * images_per_shard
     out_filename = output_filebase+'-'+(shard_format % num_shards)+'.tfrecord'
     log.info('%s of %s [%s :] export to %s' %(i , num_shards, start, out_filename))
     gen_shard(sess, input_base_dir, image_filenames[start:], out_filename,image_texts[start:])
@@ -182,12 +183,12 @@ def make_example(filename, image_data, labels, text, height, width):
   """
     example = tf.train.Example(features=tf.train.Features(feature={
         'image/encoded': _bytes_feature(tf.compat.as_bytes(image_data)),
-        'image/labels': _int64_feature(labels),
-        'image/height': _int64_feature([height]),
-        'image/width': _int64_feature([width]),
+        'image/labels' : _int64_feature(labels),
+        'image/height' : _int64_feature([height]),
+        'image/width'  : _int64_feature([width]),
         'image/filename': _bytes_feature(tf.compat.as_bytes(filename)),
-        'text/string': _bytes_feature(tf.compat.as_bytes(text)),
-        'text/length': _int64_feature([len(text)])
+        'text/string'  : _bytes_feature(tf.compat.as_bytes(text)),
+        'text/length'  : _int64_feature([len(text)])
     }))
     return example
 
@@ -198,7 +199,7 @@ def _bytes_feature(values):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
 
 def main(argv=None):
-    gen_data('../data/train/crop_img_hor', 'label.txt', '../data/train/words')
+    gen_data('../data/originData/crop_img_hor', 'label.txt', '../data/train/words')
     # gen_data('../data/images', 'annotation_val.txt',   '../data/val/words')
     # gen_data('../data/images', 'annotation_test.txt',  '../data/test/words')
 

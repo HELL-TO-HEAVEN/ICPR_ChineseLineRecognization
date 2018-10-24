@@ -19,7 +19,6 @@
 
 import tensorflow as tf
 import pipeline
-import charset
 import model_fn
 import filters
 
@@ -49,7 +48,7 @@ tf.app.flags.DEFINE_integer('max_num_steps', 2**21,
 tf.app.flags.DEFINE_integer('save_checkpoint_secs', 120,
                             """Interval between daving checkpoints""")
 
-tf.app.flags.DEFINE_integer('num_input_threads',4,
+tf.app.flags.DEFINE_integer('num_input_threads',2,
                           """Number of readers/generators for input data""")
 tf.app.flags.DEFINE_integer('num_gpus', 1,
                             """Number of GPUs to use for distributed training""")
@@ -106,7 +105,7 @@ def _get_input():
                   max_string_length=FLAGS.max_string_length,
                   check_input=(not FLAGS.static_data) )
     
-    gpu_batch_size = FLAGS.batch_size / FLAGS.num_gpus
+    gpu_batch_size = FLAGS.batch_size // FLAGS.num_gpus
     
     # Pack keyword arguments into dictionary
     data_args = { 'num_threads': FLAGS.num_input_threads,

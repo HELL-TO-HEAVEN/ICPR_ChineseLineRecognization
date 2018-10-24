@@ -4,6 +4,7 @@ import os
 import math
 import cv2
 import codecs
+from config import  log
 
 
 def clock(coor):
@@ -19,7 +20,7 @@ def clock(coor):
     return coor[0], coor[1]
 
 def crop():
-    root_dir = '../data/train'
+    root_dir = '../data/originData'
     text_dir = os.path.join(root_dir, 'txt_train')
     img_dir = os.path.join(root_dir, 'image_train')
     save_dir_hor = os.path.join(root_dir, 'crop_img_hor')
@@ -67,10 +68,27 @@ def crop():
                 img_new = Image.fromarray(dst)
                 # name = '/'+str(i)+'_'+str(j)+'.jpg'
                 name = imgname + '_' + str(j) + '.jpg'
-                if w > h:
+                if w > h: # 横的图片
+                    # 对image_new做resize
+                    p = img_new.size[1] / 31
+                    if p < 1:
+                        continue
+                    new_height = 31
+                    new_width = int(img_new.size[0] / p)
+                    log.debug('horizonal image: with width %+3s and height %+3s' %(new_width, new_height))
+                    image_resized = img_new.resize((new_width, new_height))
+
                     img_new.save(os.path.join(save_dir_hor, name))
                     fh.write(name + ' ' + label + '\n')
-                else:
+                else: # 竖的图片
+                    p = img_new.size[0] / 31
+                    if p < 1:
+                        continue
+                    new_height = int(img_new.size[1] / p)
+                    new_width = 31
+                    log.debug('vertical image: with width %+3s and height %+3s' %(new_width, new_height))
+                    image_resized = img_new.resize((new_width, new_height))
+
                     img_new.save(os.path.join(save_dir_ver, name))
                     fv.write(name + ' ' + label + '\n')
     # break
