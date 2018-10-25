@@ -10,7 +10,7 @@ def load_dict():
     #         words.append(line)
     # log.info('Count %s characters!' %(len(words), ))
     text_dir = '../data/originData/txt_train'
-    words = set(['', ])
+    words = set()
     for txtname in os.listdir(text_dir):
         with open(text_dir + '/' + txtname, 'r', encoding="utf-8") as f:
             for line in f.readlines():

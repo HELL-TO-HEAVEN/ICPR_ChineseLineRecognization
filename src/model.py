@@ -105,7 +105,9 @@ def convnet_layers( inputs, widths, mode ):
         conv8 = conv_layer( conv7, layer_params[7], training )  # 3,13
         pool8 = tf.layers.max_pooling2d( conv8, [3, 1], [3, 1], 
                                          padding='valid', 
-                                         name='pool8' )         # 1,13
+                                        name='pool8' )         # 1,13
+
+        # pool8 = tf.Print(pool8, data= [tf.shape(pool8), ], first_n= 10, summarize= 10 )
         # squeeze row dim
         features = tf.squeeze( pool8, axis=1, name='features' ) 
         

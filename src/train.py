@@ -32,7 +32,7 @@ tf.app.flags.DEFINE_string('tune_from','',
 tf.app.flags.DEFINE_string('tune_scope','',
                           """Variable scope for training""")
 
-tf.app.flags.DEFINE_integer('batch_size',2**5,
+tf.app.flags.DEFINE_integer('batch_size',1,
                             """Mini-batch size""")
 tf.app.flags.DEFINE_float('learning_rate',1e-4,
                           """Initial learning rate""")

@@ -78,7 +78,7 @@ def crop():
                     log.debug('horizonal image: with width %+3s and height %+3s' %(new_width, new_height))
                     image_resized = img_new.resize((new_width, new_height))
 
-                    img_new.save(os.path.join(save_dir_hor, name))
+                    image_resized.save(os.path.join(save_dir_hor, name))
                     fh.write(name + ' ' + label + '\n')
                 else: # 竖的图片
                     p = img_new.size[0] / 31
@@ -89,7 +89,7 @@ def crop():
                     log.debug('vertical image: with width %+3s and height %+3s' %(new_width, new_height))
                     image_resized = img_new.resize((new_width, new_height))
 
-                    img_new.save(os.path.join(save_dir_ver, name))
+                    image_resized.save(os.path.join(save_dir_ver, name))
                     fv.write(name + ' ' + label + '\n')
     # break
     fh.close()
