@@ -17,6 +17,7 @@
 # train.py -- Train all or only part of the model from scratch or an
 #   existing checkpoint.
 
+import os
 import tensorflow as tf
 import pipeline
 import model_fn
@@ -178,4 +179,5 @@ def main( argv=None ):
     classifier.train( input_fn=_get_input, max_steps=FLAGS.max_num_steps )
 
 if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     tf.app.run()

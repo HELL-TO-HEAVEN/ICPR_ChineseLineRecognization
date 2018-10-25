@@ -261,13 +261,14 @@ def train_fn(scope, tune_from, learning_rate,
 
         # Initialize weights from a pre-trained model
         # NOTE: Does not work when num_gpus>1, cf. tensorflow issue 21615.
-        scaffold = tf.train.Scaffold(init_fn=
-                                     _get_init_pretrained(tune_from))
+        # scaffold = tf.train.Scaffold(init_fn=
+        #                              _get_init_pretrained(tune_from))
 
         return tf.estimator.EstimatorSpec(mode=mode,
                                           loss=loss,
                                           train_op=train_op,
-                                          scaffold=scaffold)
+                                          # scaffold=scaffold
+                                          )
 
     return train
 
