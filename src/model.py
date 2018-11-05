@@ -143,9 +143,10 @@ def rnn_layer( bottom_sequence, sequence_length, rnn_size, scope ):
     weight_initializer = tf.truncated_normal_initializer( stddev=0.01 )
 
     # Default activation is tanh
-    cell_fw = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell( rnn_size )
-    cell_bw = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell( rnn_size )
-
+    cell_fw = tf.contrib.rnn.LSTMCell(rnn_size,
+                                      initializer=weight_initializer)
+    cell_bw = tf.contrib.rnn.LSTMCell(rnn_size,
+                                      initializer=weight_initializer)
     # Pre-CUDNN (slower) alternatve. Default activation is tanh .
     #cell_fw = tf.contrib.rnn.LSTMCell( rnn_size, 
     #                                   initializer=weight_initializer)

@@ -1,6 +1,6 @@
 import logging, sys
 from pandas import Timestamp
-logging.basicConfig(format='%(asctime)s %(funcName)-20s: %(levelname)+8s: %(message)s', level=logging.INFO,)
+# logging.basicConfig(format='%(asctime)s %(funcName)-20s: %(levelname)+8s: %(message)s', level=logging.INFO,)
 
 WORDDICT= '/home/yindong/PycharmProjects/ICPR_ChineseLineRecognization/data/train/ChineseChar'
 
