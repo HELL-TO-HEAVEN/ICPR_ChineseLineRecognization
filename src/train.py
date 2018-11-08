@@ -50,42 +50,82 @@ tf.app.flags.DEFINE_integer('max_num_steps', 2**26,
 
 tf.app.flags.DEFINE_string('train_device','/gpu:1',
                            """Device for training graph placement""")
-tf.app.flags.DEFINE_string('input_device','/gpu:0',
-                           """Device for preprocess/batching graph placement""")
+tf.app.flags.DEFINE_string('train_input_device','/cpu:1',
+                           """Device for train data preprocess/batching graph placement""")
+tf.app.flags.DEFINE_string("val_input_device", "/cpu:2",
+                           """Device for validation data preprocess/batching graph placement""")
 
 tf.app.flags.DEFINE_string('train_path','../data/train/',
                            """Base directory for training data""")
+tf.app.flags.DEFINE_string("val_path", "../data/val/",
+                           """Base directory for validating data""")
 tf.app.flags.DEFINE_string('filename_pattern','words-*',
                            """File pattern for input data""")
-tf.app.flags.DEFINE_integer('num_input_threads',8,    #4
+tf.app.flags.DEFINE_integer('num_input_threads',1,    #4
                           """Number of readers for input data""")
 tf.app.flags.DEFINE_integer('width_threshold',None,
                             """Limit of input image width""")
 tf.app.flags.DEFINE_integer('length_threshold',None,
                             """Limit of input string length width""")
-
+tf.app.flags.DEFINE_integer("num_epochs", None,
+                            """number of epochs for input queue""")
+tf.app.flags.DEFINE_float("train_val_split", 0.1,
+                          """train validation data split ratio""")
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # Non-configurable parameters
 optimizer='Adam'
 mode = learn.ModeKeys.TRAIN # 'Configure' training mode for dropout layers
 
-def _get_input():
+def _get_bucketed_input(data_dir,
+                        filename_pattern,
+                        batch_size,
+                        num_threads,
+                        input_device,
+                        width_threshold,
+                        length_threshold,
+                        num_epochs,
+                        ):
     """Set up and return image, label, and image width tensors"""
 
-    image,width,label,_,_,_=mjsynth.bucketed_input_pipeline(
-        FLAGS.train_path, 
-        str.split(FLAGS.filename_pattern,','),
-        batch_size=FLAGS.batch_size,
-        num_threads=FLAGS.num_input_threads,
-        input_device=FLAGS.input_device,
-        width_threshold=FLAGS.width_threshold,
-        length_threshold=FLAGS.length_threshold )
+    image, width, label, length, _,_=mjsynth.bucketed_input_pipeline(
+        data_dir,
+        str.split(filename_pattern, ','),
+        batch_size= batch_size,
+        num_threads= num_threads,
+        input_device= input_device,
+        width_threshold= width_threshold,
+        length_threshold= length_threshold,
+        num_epochs= num_epochs
+    )
 
     #tf.summary.image('images',image) # Uncomment to see images in TensorBoard
-    return image,width,label
+    return image, width, label, length
 
-def _get_training(rnn_logits,label,sequence_length):
+
+def _get_threaded_input(
+        data_dir,
+        filename_pattern,
+        batch_size,
+        num_threads,
+        input_device,
+        num_epochs,
+):
+    """Set up and return image, label, width and text tensors"""
+
+    image, width, label, length, text, filename = mjsynth.threaded_input_pipeline(
+        data_dir,
+        filename_pattern,
+        batch_size= batch_size,
+        num_threads= num_threads,
+        num_epochs= num_epochs,  # Repeat for streaming
+        batch_device= input_device,
+        preprocess_device= input_device)
+
+    return image, width, label, length
+
+
+def _add_optimizer(loss):
     """Set up training ops"""
     with tf.name_scope("train"):
 
@@ -96,8 +136,6 @@ def _get_training(rnn_logits,label,sequence_length):
 
         rnn_vars = tf.get_collection( tf.GraphKeys.TRAINABLE_VARIABLES,
                                        scope=scope)
-
-        loss = model.ctc_loss_layer(rnn_logits,label,sequence_length) 
 
         # Update batch norm stats [http://stackoverflow.com/questions/43234667]
         extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -116,7 +154,7 @@ def _get_training(rnn_logits,label,sequence_length):
                 learning_rate=learning_rate,
                 beta1=FLAGS.momentum)
 
-            train_op = tf.contrib.layers.optimize_loss(
+            optimizer_ops = tf.contrib.layers.optimize_loss(
                 loss=loss,
                 global_step=tf.train.get_global_step(),
                 learning_rate=learning_rate,
@@ -125,7 +163,36 @@ def _get_training(rnn_logits,label,sequence_length):
 
             tf.summary.scalar( 'learning_rate', learning_rate )
 
-    return train_op
+    return optimizer_ops
+
+def _get_evaluating(rnn_logits,sequence_length,label,label_length):
+    """Create ops for testing (all scalars):
+       loss: CTC loss function value,
+       label_error:  Batch-normalized edit distance on beam search max
+       sequence_error: Batch-normalized sequence error rate
+    """
+    with tf.name_scope("eval"):
+        predictions,_ = tf.nn.ctc_beam_search_decoder(rnn_logits,
+                                                   sequence_length,
+                                                   beam_width=128,
+                                                   top_paths=1,
+                                                   merge_repeated=True)
+        hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
+        label_errors = tf.edit_distance(hypothesis, label, normalize=False)
+        sequence_errors = tf.count_nonzero(label_errors,axis=0)
+        total_label_error = tf.reduce_sum( label_errors )
+        total_labels = tf.reduce_sum( label_length )
+        label_error = tf.truediv( total_label_error,
+                                  tf.cast(total_labels, tf.float32 ),
+                                  name='label_error')
+        sequence_error = tf.truediv( tf.cast( sequence_errors, tf.int32 ),
+                                     tf.shape(label_length)[0],
+                                     name='sequence_error')
+        tf.summary.scalar( 'label_error', label_error )
+        tf.summary.scalar( 'sequence_error', sequence_error )
+
+    return label_error, sequence_error
+
 
 def _get_session_config():
     """Setup session config to soften device placement"""
@@ -156,43 +223,92 @@ def main(argv=None):
 
     with tf.Graph().as_default():
         global_step = tf.train.get_or_create_global_step()
-        
-        image,width,label = _get_input()
+        isTraining= tf.placeholder(tf.bool, shape= (), name= "isTraining")
+        trainImg, trainWidth, trainLabel, trainLength= _get_bucketed_input(
+            data_dir= FLAGS.train_path,
+            filename_pattern= FLAGS.filename_pattern,
+            batch_size= FLAGS.batch_size,
+            num_threads= FLAGS.num_input_threads,
+            input_device= FLAGS.train_input_device,
+            width_threshold= FLAGS.width_threshold,
+            length_threshold= FLAGS.length_threshold,
+            num_epochs= FLAGS.num_epochs,
+        )
+        valImg, valWidth, vallabel, valLength= _get_threaded_input(
+                data_dir=FLAGS.val_path,
+                filename_pattern=FLAGS.filename_pattern,
+                batch_size=FLAGS.batch_size,
+                num_threads=FLAGS.num_input_threads,
+            input_device=FLAGS.val_input_device,
+            num_epochs= FLAGS.num_epochs,
+        )
+        image,width,label, length= tf.cond(
+            isTraining,
+            true_fn= lambda: (trainImg, trainWidth, trainLabel, trainLength),
+            false_fn= lambda : (valImg, valWidth, vallabel, valLength),
+        )
 
 
         with tf.device(FLAGS.train_device):
-            features,sequence_length = model.convnet_layers( image, width, mode)
+
+            features,sequence_length = model.convnet_layers( image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
             # features,sequence_length = zf_mod_denseNet2.Dense_net( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes())
-            with tf.variable_scope(tf.get_variable_scope(),reuse=False):
-                train_op = _get_training(logits,label,sequence_length)
+            with tf.variable_scope(tf.get_variable_scope(),reuse=False): # purpose here
+                with tf.name_scope("loss"):
+                    loss = model.ctc_loss_layer(logits, label, sequence_length)
+                    tf.summary.scalar("loss", loss)
+                optimizerOps = _add_optimizer(loss)
+                labelErrors, sequenceErrors= _get_evaluating(logits, sequence_length, label, length)
 
-        session_config = _get_session_config()
-
-        summary_op = tf.summary.merge_all()
+        trainSummaryOps= tf.get_collection(tf.GraphKeys.SUMMARIES, scope= "convnet|rnn|loss|train")
+        trainSummaryMerged= tf.summary.merge(trainSummaryOps)
+        valSummaryOps= tf.get_collection(tf.GraphKeys.SUMMARIES, scope= "convnet|rnn|loss|eval")
+        valSummaryMerged= tf.summary.merge(valSummaryOps)
         init_op = tf.group( tf.global_variables_initializer(),
-                            tf.local_variables_initializer()) 
+                            tf.local_variables_initializer())
 
-        sv = tf.train.Supervisor(
-            logdir=FLAGS.output,
-            init_op=init_op,
-            summary_op=summary_op,
-            save_summaries_secs=600,#30
-            init_fn=_get_init_pretrained(),
-            save_model_secs=600)#150
+        # sv = tf.train.Supervisor(
+        #     logdir=FLAGS.output,
+        #     init_op=init_op,
+            # init_feed_dict= {isTraining: True},
+            # summary_op=summary_op,
+            # save_summaries_secs=0,#30
+            # init_fn=_get_init_pretrained(),
+            # save_model_secs=0)#150
+        #
+        saver= tf.train.Saver(tf.global_variables())
+        summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'), graph= tf.get_default_graph())
+        coordinator= tf.train.Coordinator()
+        session_config = _get_session_config()
+        with tf.Session(config= session_config) as sess:
+            sess.run(init_op)
 
+            threads= tf.train.start_queue_runners(sess= sess, coord= coordinator)
 
-        with sv.managed_session(config=session_config) as sess:
             step = sess.run(global_step)
             while step < FLAGS.max_num_steps:
-                if sv.should_stop():
+                if coordinator.should_stop():
                     break                    
-                [step_loss,step]=sess.run([train_op,global_step])
+                [step_loss, trainSummary, step]=sess.run([optimizerOps, trainSummaryMerged, global_step], feed_dict= {isTraining: True})
+                log.debug("step: %s" %(step, ))
+                summaryWriter.add_summary(trainSummary, step)
+
+                if ( step * FLAGS.train_val_split ) % 1 == 0:
+                    log.info("validation start:")
+                    [val_loss, label_errors, sequence_errors, valSummary] = sess.run(
+                        [loss, labelErrors, sequenceErrors, valSummaryMerged],
+                        feed_dict= {isTraining: False}
+                    )
+                    summaryWriter.add_summary(valSummary, step)
+                # print step loss
                 if step%1000==0:
                     log.info("Step %+6s: %s." %(step, step_loss))
-            sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
-                           global_step=global_step)
+
+            coordinator.request_stop()
+            coordinator.join(threads)
+            saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=global_step)
 
 
 if __name__ == '__main__':
