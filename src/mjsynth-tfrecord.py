@@ -33,132 +33,149 @@ The Example proto contains the following fields:
 # The list (well, string) of valid output characters
 # If any example contains a character not found here, an error will result
 # from the calls to .index in the decoder below
-out_charset=list(word_dict.load_dict())
+out_charset = list(word_dict.load_dict())
 
 jpeg_data = tf.placeholder(dtype=tf.string)
-jpeg_decoder = tf.image.decode_jpeg(jpeg_data,channels=1)
-
-kernel_sizes = [5,5,3,3,3,3] # CNN kernels for image reduction
+jpeg_decoder = tf.image.decode_jpeg(jpeg_data, channels=1)
 
 # Minimum allowable width of image after CNN processing
 min_width = 20
 
-def calc_seq_len(image_width):
-    """Calculate sequence length of given image after CNN processing"""
-
-    conv1_trim =  2 * (kernel_sizes[0] // 2)
-    fc6_trim = 2*(kernel_sizes[5] // 2)
-
-    after_conv1 = image_width - conv1_trim
-    after_pool1 = after_conv1 // 2
-    after_pool2 = after_pool1 // 2
-    after_pool4 = after_pool2 - 1 # max without stride
-    after_fc6 =  after_pool4 - fc6_trim
-    seq_len = 2*after_fc6
-    return seq_len
+# kernel_sizes = [5,5,3,3,3,3] # CNN kernels for image reduction
 # def calc_seq_len(image_width):
 #     """Calculate sequence length of given image after CNN processing"""
 #
 #     conv1_trim =  2 * (kernel_sizes[0] // 2)
-#     # fc6_trim = 2*(kernel_sizes[5] // 2)
+#     fc6_trim = 2*(kernel_sizes[5] // 2)
 #
 #     after_conv1 = image_width - conv1_trim
-#     after_pool2 = after_conv1 -2
-#
-#     after_pool4 = after_pool2 - 1
-#     after_pool6=after_pool4 - 1
-#     seq_len = after_pool6
+#     after_pool1 = after_conv1 // 2
+#     after_pool2 = after_pool1 // 2
+#     after_pool4 = after_pool2 - 1 # max without stride
+#     after_fc6 =  after_pool4 - fc6_trim
+#     seq_len = 2*after_fc6
 #     return seq_len
 
-seq_lens = [calc_seq_len(w) for w in range(1024)]
+kernel_sizes = [3, ] * 8
 
-def gen_data(input_base_dir, image_list_filename, output_filebase, 
-             num_shards=10,start_shard=0):
+
+def calc_seq_len(image_width):
+    """Calculate sequence length of given image after CNN processing"""
+
+    conv1_trim = 2 * (kernel_sizes[0] // 2)
+    # fc6_trim = 2*(kernel_sizes[5] // 2)
+
+    after_conv1 = image_width - conv1_trim
+    after_pool2 = after_conv1 - 2
+
+    after_pool4 = after_pool2 - 1
+    after_pool6 = after_pool4 - 1
+    seq_len = after_pool6
+    return seq_len
+
+
+seq_lens = [calc_seq_len(w) for w in range(2048)]
+
+
+def gen_data(input_base_dir, image_list_filename, output_filebase,
+             num_shards=20, start_shard=0):
     """ Generate several shards worth of TFRecord data """
     session_config = tf.ConfigProto()
-    session_config.gpu_options.allow_growth=True
+    session_config.gpu_options.allow_growth = True
     sess = tf.Session(config=session_config)
-    image_filenames,image_texts = get_image_filenames(os.path.join(input_base_dir,
-                                                       image_list_filename))
-    num_digits = math.ceil( math.log10( num_shards - 1 ))
-    shard_format = '%0'+ ('%d' %num_digits) + 'd' # Use appropriate # leading zeros
-    images_per_shard = int(math.ceil( len(image_filenames) / num_shards ))
-    
-    for i in range(start_shard,num_shards):
-        start = i*images_per_shard
-        end   = (i+1)*images_per_shard
-        out_filename = output_filebase+'-'+(shard_format % i)+'.tfrecord'
+    image_filenames, image_texts = get_image_filenames(os.path.join(input_base_dir,
+                                                                    image_list_filename))
+    num_digits = math.ceil(math.log10(num_shards - 1))
+    shard_format = '%0' + ('%d' % num_digits) + 'd'  # Use appropriate # leading zeros
+    images_per_shard = int(math.floor(len(image_filenames) / num_shards))
+
+    for i in range(start_shard, num_shards):
+        start = i * images_per_shard
+        end = (i + 1) * images_per_shard
+        out_filename = output_filebase + '-' + (shard_format % i) + '.tfrecord'
         # if os.path.exists(out_filename): # Don't recreate data if restarting
         #     continue
-        log.info('%s of %s [%s : %s], Output to %s' %(i, num_shards, start, end, out_filename))
-        gen_shard(sess, input_base_dir, image_filenames[start:end], out_filename,image_texts[start:end])
+        log.info('%s of %s [%s : %s], Output to %s' % (i, num_shards, start, end, out_filename))
+        gen_shard(sess, input_base_dir, image_filenames[start:end], out_filename, image_texts[start:end])
 
     # Clean up writing last shard
     start = num_shards * images_per_shard
-    out_filename = output_filebase+'-'+(shard_format % num_shards)+'.tfrecord'
-    log.info('%s of %s [%s :] export to %s' %(i , num_shards, start, out_filename))
-    gen_shard(sess, input_base_dir, image_filenames[start:], out_filename,image_texts[start:])
+    out_filename = output_filebase + '-' + (shard_format % num_shards) + '.tfrecord'
+    log.info('%s of %s [%s :] export to %s' % (i, num_shards, start, out_filename))
+    gen_shard(sess, input_base_dir, image_filenames[start:], out_filename, image_texts[start:])
 
     sess.close()
+
 
 def gen_shard(sess, input_base_dir, image_filenames, output_filename, image_texts):
     """Create a TFRecord file from a list of image filenames"""
     writer = tf.python_io.TFRecordWriter(output_filename)
-    
-    for item,filename in enumerate(image_filenames):
-        path_filename = os.path.join(input_base_dir,filename)
+    skipCount = 0
+    errorCount = 0
+    emptyCount = 0
+    for item, filename in enumerate(image_filenames):
+        path_filename = os.path.join(input_base_dir, filename)
         if os.stat(path_filename).st_size == 0:
-            log.warning('Skipping empty files: %s' %(filename, ))
+            log.warning('Skipping empty files: %s' % (filename,))
+            emptyCount += 1
             continue
         try:
-            image_data,height,width = get_image(sess, path_filename)
-            text,labels = get_text_and_labels(image_texts[item])
-            if is_writable(width,text):
-                #查看文本和标签
+            image_data, height, width = get_image(sess, path_filename)
+            text, labels = get_text_and_labels(image_texts[item])
+            if is_writable(width, text):
+                # 查看文本和标签
                 # print(text,labels)
-                 if len(labels)==0:
-                     print(text,labels)
-                 else:
-                     example = make_example(filename, image_data, labels, text,
-                                       height, width)
-                     writer.write(example.SerializeToString())
+                if len(labels) == 0:
+                    log.info("Empty text when processing image %s? %s" % (filename, text))
+                    emptyCount += 1
+                else:
+                    example = make_example(filename, image_data, labels, text,
+                                           height, width)
+                    writer.write(example.SerializeToString())
             else:
-                log.info('Skipping Image with too short width: %s' %(filename, ))
+                log.info('Skipping Image with too short width: %s' % (filename,))
+                skipCount += 1
         except Exception as e:
             # Some files have bogus payloads, catch and note the error, moving on
-            log.warning('Error occured during processing file %s' %(filename, ))
+            errorCount += 1
+            log.error('Error occured during processing file %s' % (filename,))
             log.error(e)
     writer.close()
+    log.info("Make tfRecord succeed! %s images processed while %s skipped, %s empty and %s images raise an error." % (
+    item, skipCount, emptyCount, errorCount))
 
 
 def get_image_filenames(image_list_filename):
     """ Given input file, generate a list of relative filenames"""
     filenames = []
-    texts=[]
-    with open(image_list_filename,encoding='UTF-8') as f:
+    texts = []
+    with open(image_list_filename, encoding='UTF-8') as f:
         for line in f:
             # Carve out the ground truth string and file path from lines like:
             # Absolute_cropped_jpg_filename 49537
-            file=line.split(' ',1)
-            filename =file[0]
-            text=file[1].strip()
+            file = line.split(' ', 1)
+            filename = file[0]
+            text = file[1].strip()
             filenames.append(filename)
             texts.append(text)
-    return filenames,texts
+    return filenames, texts
 
-def get_image(sess,filename):
+
+def get_image(sess, filename):
     """Given path to an image file, load its data and size"""
     with tf.gfile.FastGFile(filename, 'rb') as f:
         image_data = f.read()
-    image = sess.run(jpeg_decoder,feed_dict={jpeg_data: image_data})
+    image = sess.run(jpeg_decoder, feed_dict={jpeg_data: image_data})
     height = image.shape[0]
     width = image.shape[1]
     return image_data, height, width
 
-def is_writable(image_width,text):
+
+def is_writable(image_width, text):
     """Determine whether the CNN-processed image is longer than the string"""
-    return (image_width > min_width) and (len(text) <= seq_lens[image_width]) #使用查表法而非对每个输入进行计算, 提高运行速度.
-    
+    return (image_width > min_width) and (len(text) <= seq_lens[image_width])  # 使用查表法而非对每个输入进行计算, 提高运行速度.
+
+
 def get_text_and_labels(text):
     """ Extract the human-readable text and label sequence from image filename"""
     # Ground truth string lines embedded within base filename between underscores
@@ -167,7 +184,8 @@ def get_text_and_labels(text):
     # Transform string text to sequence of indices using charset, e.g.,
     # MONIKER -> [12, 14, 13, 8, 10, 4, 17]
     labels = [out_charset.index(c) for c in list(text)]
-    return text,labels
+    return text, labels
+
 
 def make_example(filename, image_data, labels, text, height, width):
     """Build an Example proto for an example.
@@ -183,25 +201,33 @@ def make_example(filename, image_data, labels, text, height, width):
   """
     example = tf.train.Example(features=tf.train.Features(feature={
         'image/encoded': _bytes_feature(tf.compat.as_bytes(image_data)),
-        'image/labels' : _int64_feature(labels),
-        'image/height' : _int64_feature([height]),
-        'image/width'  : _int64_feature([width]),
+        'image/labels': _int64_feature(labels),
+        'image/height': _int64_feature([height]),
+        'image/width': _int64_feature([width]),
         'image/filename': _bytes_feature(tf.compat.as_bytes(filename)),
-        'text/string'  : _bytes_feature(tf.compat.as_bytes(text)),
-        'text/length'  : _int64_feature([len(text)])
+        'text/string': _bytes_feature(tf.compat.as_bytes(text)),
+        'text/length': _int64_feature([len(text)])
     }))
     return example
+
 
 def _int64_feature(values):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
+
 def _bytes_feature(values):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
 
+
 def main(argv=None):
-    gen_data('../data/originData/crop_img_hor', 'label.txt', '../data/train/words')
-    # gen_data('../data/images', 'annotation_val.txt',   '../data/val/words')
+    log.info("Start process train data:")
+    gen_data('../data/train/crop_img_hor', 'label.txt', '../data/train/words')
+    log.info("train data End!")
+    log.info("Start process validation data:")
+    gen_data("../data/val/crop_img_hor", 'label.txt', '../data/val/words')
+    log.info("Validation data End!")
     # gen_data('../data/images', 'annotation_test.txt',  '../data/test/words')
+
 
 if __name__ == '__main__':
     main()
