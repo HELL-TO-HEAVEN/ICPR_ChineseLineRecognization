@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import tensorflow as tf
-from tflearn.layers.conv import global_avg_pool
 from tensorflow.contrib.layers import batch_norm,flatten
 from tensorflow.contrib.layers import xavier_initializer
 from tensorflow.contrib.framework import arg_scope
@@ -28,36 +27,11 @@ def Global_Average_Pooling(x,stride=1):
     return tf.layer.average_pooling2d(inputs=x,pool_size=pool_size,strides=stride)
     # The strdie value does not matter.It is global average pooling without tflearn
     """
-    return global_avg_pool(x,name='Global_avg_pooling')
+    return tf.reduce_mean(x,axis= [1, 2], name='Global_avg_pooling')
     # But maybe you need to install h5py and curses or not
 
 def Batch_Normalization(x,training,scope):
-    with arg_scope([batch_norm],
-                   scope=scope,
-                   update_collections=None,
-                   deacy=0.9,
-                   center=True,
-                   scale=True,
-                   zero_debias_moving_mean=True):
-        if training:
-            return tf.layers.batch_normalization(x,axis=3,training=training,reuse=True)
-
-        else:
-            return tf.layers.batch_normalization(x,axis=3,training=training,reuse=True)
-
-
-# def Batch_Normalization(x, training, scope):
-#     with arg_scope([batch_norm],
-#                    scope=scope,
-#                    updates_collections=None,
-#                    decay=0.9,
-#                    center=True,
-#                    scale=True,
-#                    zero_debias_moving_mean=True) :
-#         return tf.cond(training,
-#                        lambda : batch_norm(inputs=x, is_training=training, reuse=None),
-#                        lambda : batch_norm(inputs=x, is_training=training, reuse=True))
-
+    return tf.layers.batch_normalization(x,axis=3,training=training, name= scope)
 
 def Drop_out(x,rate,training):
     return tf.layers.dropout(inputs=x,rate=rate,training=training)
@@ -116,9 +90,9 @@ def dense_block(input_x,nb_layers,layer_name,training):
 
         return x
 
-def Dense_net(input_x,widths,mode):
+def dense_net(input_x, widths, training):
 
-    training = (mode == learn.ModeKeys.TRAIN)
+    # training = (mode == learn.ModeKeys.TRAIN)
     # input_x:[ 32 ,width , 3 ]
     x = conv_layer(input_x,filter=filter,kernel=[3,3],stride=1,layer_name='conv0')
     # x = Max_Pooling(x,pool_size=[3,3],stride=2)
@@ -136,16 +110,23 @@ def Dense_net(input_x,widths,mode):
     x = dense_block(input_x =x ,nb_layers=8,layer_name='dense_3',training=training)
     # x: [4,width,256+8*32=512]
     x = transition_layer(x,512,scope='trans_3',training=training)
-    # x: [4,width-1,512]
+    # x: [2,width-1,512]
 
     x = Batch_Normalization(x,training=training,scope='linear_batch')
     x = Relu(x)
     # x = Global_Average_Pooling(x)  # cifar-10中用于分类
     x = Max_Pooling(x,[2,2],[2,1])
-    # x: [1,width/2,512]
+    # x: [1, width - 1,512]
 
     features = tf.squeeze(x,axis=1,name='features')
     # calculate resulting sequence length
+
+    sequence_length= _get_sequence_length(widths)
+
+    return features,sequence_length
+
+
+def _get_sequence_length(widths):
     one = tf.constant(1, dtype=tf.int32, name='one')
     two = tf.constant(2, dtype=tf.int32, name='two')
 
@@ -159,9 +140,5 @@ def Dense_net(input_x,widths,mode):
     after_trans_3=tf.subtract(after_dense_3,one)
     after_second_maxpool=tf.subtract(after_trans_3,one)
     sequence_length = tf.reshape(after_second_maxpool,[-1], name='seq_len')
-
-    return features,sequence_length
-
-
-
+    return sequence_length
 

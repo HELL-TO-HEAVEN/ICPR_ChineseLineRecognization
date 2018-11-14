@@ -20,6 +20,7 @@ from tensorflow.contrib import learn
 from config import log, TRAIN_VAL_SPLIT
 import mjsynth
 import model
+import denseNet
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -271,7 +272,8 @@ def main(argv=None):
         with tf.device(FLAGS.train_device):
 
             features,sequence_length = model.convnet_layers( image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
-            # features,sequence_length = zf_mod_denseNet2.Dense_net( image, width, mode)
+            features,sequence_length = denseNet.dense_net(image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
+
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes())
             with tf.variable_scope(tf.get_variable_scope(),reuse=False): # purpose here
