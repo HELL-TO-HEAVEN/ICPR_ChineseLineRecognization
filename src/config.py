@@ -1,5 +1,4 @@
 import logging, sys
-from pandas import Timestamp
 # logging.basicConfig(format='%(asctime)s %(funcName)-20s: %(levelname)+8s: %(message)s', level=logging.INFO,)
 
 WORDDICT= '/home/yindong/PycharmProjects/ICPR_ChineseLineRecognization/data/train/ChineseChar'
@@ -14,3 +13,4 @@ console.setFormatter(formatter)
 log.addHandler(console)
 log.propagate = False
 
+TRAIN_VAL_SPLIT= 0.1

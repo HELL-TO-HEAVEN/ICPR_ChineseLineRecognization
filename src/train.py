@@ -17,7 +17,7 @@
 import os
 import tensorflow as tf
 from tensorflow.contrib import learn
-from config import log
+from config import log, TRAIN_VAL_SPLIT
 import mjsynth
 import model
 
@@ -69,8 +69,8 @@ tf.app.flags.DEFINE_integer('length_threshold',None,
                             """Limit of input string length width""")
 tf.app.flags.DEFINE_integer("num_epochs", None,
                             """number of epochs for input queue""")
-tf.app.flags.DEFINE_float("train_val_split", 0.1,
-                          """train validation data split ratio""")
+tf.app.flags.DEFINE_integer("earlyStop_tolerance", 256,
+                            """step tolerance for early stopping if the specified metrics stop to decrease or increase.""")
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # Non-configurable parameters
@@ -115,7 +115,7 @@ def _get_threaded_input(
 
     image, width, label, length, text, filename = mjsynth.threaded_input_pipeline(
         data_dir,
-        filename_pattern,
+        str.split(filename_pattern, ','),
         batch_size= batch_size,
         num_threads= num_threads,
         num_epochs= num_epochs,  # Repeat for streaming
@@ -165,13 +165,13 @@ def _add_optimizer(loss):
 
     return optimizer_ops
 
-def _get_evaluating(rnn_logits,sequence_length,label,label_length):
+def _add_metrics(rnn_logits, sequence_length, label, label_length):
     """Create ops for testing (all scalars):
        loss: CTC loss function value,
        label_error:  Batch-normalized edit distance on beam search max
        sequence_error: Batch-normalized sequence error rate
     """
-    with tf.name_scope("eval"):
+    with tf.name_scope("metrics"):
         predictions,_ = tf.nn.ctc_beam_search_decoder(rnn_logits,
                                                    sequence_length,
                                                    beam_width=128,
@@ -188,8 +188,10 @@ def _get_evaluating(rnn_logits,sequence_length,label,label_length):
         sequence_error = tf.truediv( tf.cast( sequence_errors, tf.int32 ),
                                      tf.shape(label_length)[0],
                                      name='sequence_error')
-        tf.summary.scalar( 'label_error', label_error )
+        tf.summary.scalar( 'label_error', label_error, )
+        tf.summary.scalar( 'val_label_error', label_error, collections= ["VAL_SUMMARY", ] )
         tf.summary.scalar( 'sequence_error', sequence_error )
+        tf.summary.scalar( 'val_sequence_error', sequence_error, collections= ["VAL_SUMMARY", ])
 
     return label_error, sequence_error
 
@@ -218,8 +220,25 @@ def _get_init_pretrained():
 
     return init_fn
 
+global champion, noImproveCount
+champion= 1e+20
+noImproveCount= 0
+def early_stop(metrics):
+    global champion, noImproveCount
+    if metrics < champion:
+        champion = metrics
+        noImproveCount= 0
+    else:
+        noImproveCount+= 1
+
+    if noImproveCount >= FLAGS.earlyStop_tolerance:
+        return True
+    else:
+        return False
+
 
 def main(argv=None):
+    global champion
 
     with tf.Graph().as_default():
         global_step = tf.train.get_or_create_global_step()
@@ -259,25 +278,16 @@ def main(argv=None):
                 with tf.name_scope("loss"):
                     loss = model.ctc_loss_layer(logits, label, sequence_length)
                     tf.summary.scalar("loss", loss)
-                optimizerOps = _add_optimizer(loss)
-                labelErrors, sequenceErrors= _get_evaluating(logits, sequence_length, label, length)
+                    tf.summary.scalar("val_loss", loss, collections= ["VAL_SUMMARY", ])
 
-        trainSummaryOps= tf.get_collection(tf.GraphKeys.SUMMARIES, scope= "convnet|rnn|loss|train")
-        trainSummaryMerged= tf.summary.merge(trainSummaryOps)
-        valSummaryOps= tf.get_collection(tf.GraphKeys.SUMMARIES, scope= "convnet|rnn|loss|eval")
-        valSummaryMerged= tf.summary.merge(valSummaryOps)
+                optimizerOps = _add_optimizer(loss)
+                metrics= labelErrors, sequenceErrors= _add_metrics(logits, sequence_length, label, length)
+
+        trainSummaryOps= tf.summary.merge_all()
+        valSummaryOps= tf.summary.merge_all("VAL_SUMMARY")
         init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer())
 
-        # sv = tf.train.Supervisor(
-        #     logdir=FLAGS.output,
-        #     init_op=init_op,
-            # init_feed_dict= {isTraining: True},
-            # summary_op=summary_op,
-            # save_summaries_secs=0,#30
-            # init_fn=_get_init_pretrained(),
-            # save_model_secs=0)#150
-        #
         saver= tf.train.Saver(tf.global_variables())
         summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'), graph= tf.get_default_graph())
         coordinator= tf.train.Coordinator()
@@ -291,21 +301,34 @@ def main(argv=None):
             while step < FLAGS.max_num_steps:
                 if coordinator.should_stop():
                     break                    
-                [step_loss, trainSummary, step]=sess.run([optimizerOps, trainSummaryMerged, global_step], feed_dict= {isTraining: True})
-                log.debug("step: %s" %(step, ))
+                [trainLoss, trainMetricsValue, trainSummary, step]=sess.run(
+                    [optimizerOps, metrics, trainSummaryOps, global_step],
+                    feed_dict= {isTraining: True}
+                )
+                log.debug("train step %+6s end." %(step, ))
+
                 summaryWriter.add_summary(trainSummary, step)
 
-                if ( step * FLAGS.train_val_split ) % 1 == 0:
-                    log.info("validation start:")
-                    [val_loss, label_errors, sequence_errors, valSummary] = sess.run(
-                        [loss, labelErrors, sequenceErrors, valSummaryMerged],
+                valStep= step * TRAIN_VAL_SPLIT
+                if valStep % 1 == 0:
+                    log.info("validation step %s start: " %(valStep, ))
+                    [valLoss, valMetricsValue, valSummary] = sess.run(
+                        [loss, metrics, valSummaryOps],
                         feed_dict= {isTraining: False}
                     )
+
                     summaryWriter.add_summary(valSummary, step)
+
                 # print step loss
                 if step%1000==0:
-                    log.info("Step %+6s: %s." %(step, step_loss))
+                    log.info("Step %+6s, Loss %s." %(step, trainLoss))
 
+            #     handle early stopping
+                if early_stop(trainLoss):
+                    coordinator.request_stop()
+                    coordinator.join(threads)
+                    log.error("Early stop at step %s with tolerance %s" %(step, FLAGS.earlyStop_tolerance))
+                    log.info("Champion loss is %s" %(champion, ))
             coordinator.request_stop()
             coordinator.join(threads)
             saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=global_step)
