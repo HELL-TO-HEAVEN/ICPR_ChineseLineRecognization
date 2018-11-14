@@ -88,9 +88,6 @@ def convnet_layers( inputs, widths, training ):
     Build convolutional network layers attached to the given input tensor
     """
 
-    # training = (mode == learn.ModeKeys.TRAIN)
-    training= tf.Print(training, [training, ], message= "Training or not: ")
-
     # inputs should have shape [ ?, 32, ?, 1 ]
     with tf.variable_scope( "convnet" ): # h,w
         

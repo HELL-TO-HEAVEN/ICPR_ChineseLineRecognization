@@ -51,15 +51,11 @@ tf.app.flags.DEFINE_integer('max_num_steps', 2**26,
 
 tf.app.flags.DEFINE_string('train_device','/gpu:1',
                            """Device for training graph placement""")
-tf.app.flags.DEFINE_string('train_input_device','/cpu:1',
+tf.app.flags.DEFINE_string('train_input_device','/cpu:0',
                            """Device for train data preprocess/batching graph placement""")
-tf.app.flags.DEFINE_string("val_input_device", "/cpu:2",
-                           """Device for validation data preprocess/batching graph placement""")
 
 tf.app.flags.DEFINE_string('train_path','../data/train/',
                            """Base directory for training data""")
-tf.app.flags.DEFINE_string("val_path", "../data/val/",
-                           """Base directory for validating data""")
 tf.app.flags.DEFINE_string('filename_pattern','words-*',
                            """File pattern for input data""")
 tf.app.flags.DEFINE_integer('num_input_threads',1,    #4
@@ -242,20 +238,6 @@ def main(argv=None):
             length_threshold= FLAGS.length_threshold,
             num_epochs= FLAGS.num_epochs,
         )
-        # valImg, valWidth, vallabel, valLength= _get_threaded_input(
-        #         data_dir=FLAGS.val_path,
-        #         filename_pattern=FLAGS.filename_pattern,
-        #         batch_size=FLAGS.batch_size,
-        #         num_threads=FLAGS.num_input_threads,
-        #     input_device=FLAGS.val_input_device,
-        #     num_epochs= FLAGS.num_epochs,
-        # )
-
-        # image, width,label, length= tf.cond(
-        #     isTraining,
-        #     true_fn= lambda: (trainImg, trainWidth, trainLabel, trainLength),
-        #     false_fn= lambda : (valImg, valWidth, vallabel, valLength),
-        # )
 
 
         with tf.device(FLAGS.train_device):
@@ -287,7 +269,7 @@ def main(argv=None):
             # save_model_secs=0)#150
         #
         saver= tf.train.Saver(tf.global_variables(), )
-        # summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'), graph= tf.get_default_graph(),)
+        summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'), graph= tf.get_default_graph(),)
         # coordinator= tf.train.Coordinator()
         session_config = _get_session_config()
         scaffold= tf.train.Scaffold(
@@ -295,13 +277,21 @@ def main(argv=None):
             summary_op= summary,
             saver= saver,
         )
+        summaryHook= tf.train.SummarySaverHook(
+            save_steps= 10,
+            summary_writer= summaryWriter,
+            summary_op= summary,
+        )
+        ckptHook= tf.train.CheckpointSaverHook(
+            os.path.join(FLAGS.output, 'test'),
+            save_secs= 600,
+            saver= saver,
+        )
         with tf.train.MonitoredTrainingSession(
                 master='',
-                checkpoint_dir=  os.path.join(FLAGS.output, 'test'),
+                # checkpoint_dir=  os.path.join(FLAGS.output, 'test'),
                 scaffold= scaffold,
-                save_checkpoint_secs= 300,
-                save_summaries_steps=None,
-                save_summaries_secs= 10,
+                hooks= [summaryHook, ckptHook],
                 config=session_config
         ) as sess:
             # sess.run(init_op)

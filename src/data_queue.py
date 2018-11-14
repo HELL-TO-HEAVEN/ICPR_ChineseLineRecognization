@@ -181,7 +181,7 @@ def _read_word_record(data_queue):
     length = features['text/length']
     text = features['text/string']
     filename = features['image/filename']
-    filename= tf.Print(filename, [filename, tf.sparse_tensor_to_dense(label)],  summarize= 128)
+    # filename= tf.Print(filename, [filename, tf.sparse_tensor_to_dense(label)],  summarize= 128)
     label = tf.serialize_sparse( label ) # for batching
     return image,width,label,length,text,filename
 

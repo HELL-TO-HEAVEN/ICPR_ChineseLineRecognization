@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_integer('length_threshold',None,
                             """Limit of input string length width""")
 tf.app.flags.DEFINE_integer("num_epochs", None,
                             """number of epochs for input queue""")
-tf.app.flags.DEFINE_integer("eval_interval_secs", 300,
+tf.app.flags.DEFINE_integer("eval_interval_secs", 600,
                             """Interval seconds to perform evaluation.""")
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -134,30 +134,44 @@ def main(argv=None):
                 metrics= labelErrors, sequenceErrors = _add_metrics(logits, sequence_length, label, length)
 
         summary= tf.summary.merge_all()
+        # Don't need to initialize variable, all and each variable is restored from checkpoint file.
         init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer())
 
-        # saver= tf.train.Saver(tf.global_variables())
+        saver= tf.train.Saver(tf.global_variables())
         summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'))
         # coordinator= tf.train.Coordinator()
-        # session_config = _get_session_config()
-        # scaffold= tf.train.Scaffold(
-        #     init_op= init_op,
-        #     summary_op= summary,
-        #     saver= saver,
-        # )
+        session_config = _get_session_config()
+        scaffold= tf.train.Scaffold(
+            init_op= init_op,
+            summary_op= summary,
+            saver= saver,
+        )
         stopHook= tf.contrib.training.StopAfterNEvalsHook(stepCount)
-        summaryHook= tf.contrib.training.SummaryAtEndHook(
+        summaryAtEndHook= tf.contrib.training.SummaryAtEndHook(
             summary_writer= summaryWriter,
             summary_op= summary,
         )
+        summaryHook= tf.train.SummarySaverHook(
+            save_steps= 100,
+            summary_op= summary,
+            summary_writer= summaryWriter,
+        )
+
+        # tf.contrib.training.evaluate_once(
+        #     "../data/model/test/model.ckpt-828",
+        #     scaffold= scaffold,
+        #     eval_ops= [loss, metrics],
+        #     hooks= [summaryHook, ],
+        #     config= session_config,
+        # )
         tf.contrib.training.evaluate_repeatedly(
             checkpoint_dir= FLAGS.output,
+            scaffold= scaffold,
             eval_ops= [loss, metrics],
+            eval_interval_secs=FLAGS.eval_interval_secs,
             hooks= [stopHook, summaryHook],
-            config= _get_session_config(),
-            eval_interval_secs=FLAGS.eval_interval_secs
-
+            config= session_config,
         )
 
 if __name__ == "__main__":
