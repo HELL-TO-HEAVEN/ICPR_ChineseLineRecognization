@@ -14,3 +14,8 @@ console.setFormatter(formatter)
 log.addHandler(console)
 log.propagate = False
 
+NUM_TRAIN= 129641
+NUM_VAL= 14353
+CPU_NUM= 1
+
+

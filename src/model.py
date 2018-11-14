@@ -48,14 +48,15 @@ def conv_layer( bottom, params, training ):
     kernel_initializer = tf.contrib.layers.variance_scaling_initializer()
     bias_initializer = tf.constant_initializer( value=0.0 )
 
-    top = tf.layers.conv2d( bottom, 
+    top = tf.layers.conv2d( bottom,
                             filters=params[0],
                             kernel_size=params[1],
                             padding=params[2],
-                            activation=activation,
+                            activation= activation,
                             kernel_initializer=kernel_initializer,
                             bias_initializer=bias_initializer,
                             name=params[3] )
+
     if batch_norm:
         top = norm_layer( top, training, params[3]+'/batch_norm' )
         top = tf.nn.relu( top, name=params[3]+'/relu' )
@@ -82,12 +83,13 @@ def norm_layer( bottom, training, name):
     return top
 
 
-def convnet_layers( inputs, widths, mode ):
+def convnet_layers( inputs, widths, training ):
     """
     Build convolutional network layers attached to the given input tensor
     """
 
-    training = (mode == learn.ModeKeys.TRAIN)
+    # training = (mode == learn.ModeKeys.TRAIN)
+    training= tf.Print(training, [training, ], message= "Training or not: ")
 
     # inputs should have shape [ ?, 32, ?, 1 ]
     with tf.variable_scope( "convnet" ): # h,w

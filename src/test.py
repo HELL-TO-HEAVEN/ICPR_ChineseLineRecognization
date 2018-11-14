@@ -19,7 +19,7 @@ import time
 import tensorflow as tf
 from tensorflow.contrib import learn
 
-import mjsynth
+import data_queue
 import model
 import denseNet
 
@@ -54,7 +54,7 @@ mode = learn.ModeKeys.INFER # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, width and text tensors"""
 
-    image,width,label,length,text,filename=mjsynth.threaded_input_pipeline(
+    image,width,label,length,text,filename=data_queue.threaded_input_pipeline(
         FLAGS.test_path,
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
@@ -135,8 +135,8 @@ def main(argv=None):
             features,sequence_length = model.convnet_layers( image, width, mode)
             # features,sequence_length = zf_mod_denseNet2.Dense_net(image, width, mode)
 
-            logits = model.rnn_layers( features, sequence_length,
-                                       mjsynth.num_classes() )
+            logits = model.rnn_layers(features, sequence_length,
+                                      data_queue.num_classes())
             loss,label_error,sequence_error = _get_testing(
                 logits,sequence_length,label,length)
 

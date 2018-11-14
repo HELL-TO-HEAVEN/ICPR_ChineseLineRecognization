@@ -175,12 +175,14 @@ def _read_word_record(data_queue):
     }
     features = tf.parse_single_example( example_serialized, feature_map )
 
-    image = tf.image.decode_jpeg( features['image/encoded'], channels=1 ) #gray
+    image = tf.image.decode_jpeg( features['image/encoded'], channels= 3) #gray
     width = tf.cast( features['image/width'], tf.int32) # for ctc_loss
-    label = tf.serialize_sparse( features['image/labels'] ) # for batching
+    label= features['image/labels']
     length = features['text/length']
     text = features['text/string']
     filename = features['image/filename']
+    filename= tf.Print(filename, [filename, tf.sparse_tensor_to_dense(label)],  summarize= 128)
+    label = tf.serialize_sparse( label ) # for batching
     return image,width,label,length,text,filename
 
 def _preprocess_image(image):
