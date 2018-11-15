@@ -307,7 +307,7 @@ def main(argv=None):
             valNoImprove= trainNoImprove= None
             while step < FLAGS.max_num_steps:
                 if coordinator.should_stop():
-                    break                    
+                    break
                 [trainLoss, trainMetricsValue, trainSummary, step]=sess.run(
                     [optimizerOps, metrics, trainSummaryOps, global_step],
                     feed_dict= {isTraining: True}
@@ -335,7 +335,11 @@ def main(argv=None):
                         val_sequence_error = valMetricsValue[1],
                     )
                     valChamp, valNoImprove= loss_record(valMetricsDict, valChamp, valNoImprove)
-
+                    #     handle early stopping
+                    if early_stop(valNoImprove):
+                        coordinator.request_stop()
+                        coordinator.join(threads)
+                        log.error("Early stop at step %s with tolerance %s" % (step, FLAGS.earlyStop_tolerance))
                     summaryWriter.add_summary(valSummary, step)
 
                 # print step loss
@@ -344,11 +348,7 @@ def main(argv=None):
                     log.info(' '.join( [ '%+24s: %+8s' %(key, trainChamp[key]) for key in trainChamp ] ))
                     log.info(' '.join( [ '%+24s: %+8s' %(key, valChamp[key]) for key in valChamp ] ))
 
-            #     handle early stopping
-                if early_stop(trainNoImprove):
-                    coordinator.request_stop()
-                    coordinator.join(threads)
-                    log.error("Early stop at step %s with tolerance %s" %(step, FLAGS.earlyStop_tolerance))
+
             coordinator.request_stop()
             coordinator.join(threads)
             saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=global_step)
