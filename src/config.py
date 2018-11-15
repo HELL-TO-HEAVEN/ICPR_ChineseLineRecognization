@@ -14,3 +14,5 @@ log.addHandler(console)
 log.propagate = False
 
 TRAIN_VAL_SPLIT= 0.1
+NUM_TRAIN= 129641
+NUM_VAL= 14353

@@ -18,6 +18,8 @@ import os
 import tensorflow as tf
 from tensorflow.contrib import learn
 from config import log, TRAIN_VAL_SPLIT
+import numpy as np
+from collections import OrderedDict
 import mjsynth
 import model
 import denseNet
@@ -221,25 +223,25 @@ def _get_init_pretrained():
 
     return init_fn
 
-global champion, noImproveCount
-champion= 1e+20
-noImproveCount= 0
-def early_stop(metrics):
-    global champion, noImproveCount
-    if metrics < champion:
-        champion = metrics
-        noImproveCount= 0
-    else:
-        noImproveCount+= 1
+def loss_record(metrics, champion= None, noImproveCount= None):
+    if champion == None or noImproveCount == None:
+        champion= metrics
+        noImproveCount= dict(zip(metrics.keys(), [0, ] * len(metrics)))
 
-    if noImproveCount >= FLAGS.earlyStop_tolerance:
-        return True
-    else:
-        return False
+    for key in metrics:
+        if metrics[key] <= champion[key]:
+            champion[key] = metrics[key]
+            noImproveCount[key] = 0
+        else:
+            noImproveCount[key] += 1
 
+    return champion, noImproveCount
+
+def early_stop(noImproveCount):
+    noImprove= list(noImproveCount.values())
+    return np.any(np.array(noImprove) > FLAGS.earlyStop_tolerance)
 
 def main(argv=None):
-    global champion
 
     with tf.Graph().as_default():
         global_step = tf.train.get_or_create_global_step()
@@ -300,6 +302,9 @@ def main(argv=None):
             threads= tf.train.start_queue_runners(sess= sess, coord= coordinator)
 
             step = sess.run(global_step)
+
+            valChamp = trainChamp = None
+            valNoImprove= trainNoImprove= None
             while step < FLAGS.max_num_steps:
                 if coordinator.should_stop():
                     break                    
@@ -307,6 +312,12 @@ def main(argv=None):
                     [optimizerOps, metrics, trainSummaryOps, global_step],
                     feed_dict= {isTraining: True}
                 )
+                trainMetricsDict= OrderedDict(
+                    train_loss = trainLoss,
+                    train_label_error = trainMetricsValue[0],
+                    train_sequence_error = trainMetricsValue[1],
+                )
+                trainChamp, trainNoImprove= loss_record(trainMetricsDict, trainChamp, trainNoImprove)
                 log.debug("train step %+6s end." %(step, ))
 
                 summaryWriter.add_summary(trainSummary, step)
@@ -318,19 +329,26 @@ def main(argv=None):
                         [loss, metrics, valSummaryOps],
                         feed_dict= {isTraining: False}
                     )
+                    valMetricsDict= OrderedDict(
+                        val_loss = valLoss,
+                        val_label_error = valMetricsValue[0],
+                        val_sequence_error = valMetricsValue[1],
+                    )
+                    valChamp, valNoImprove= loss_record(valMetricsDict, valChamp, valNoImprove)
 
                     summaryWriter.add_summary(valSummary, step)
 
                 # print step loss
-                if step%1000==0:
-                    log.info("Step %+6s, Loss %s." %(step, trainLoss))
+                if step%10==0:
+                    log.info("Best performance to date at step %s: " %(step, ))
+                    log.info(' '.join( [ '%+24s: %+8s' %(key, trainChamp[key]) for key in trainChamp ] ))
+                    log.info(' '.join( [ '%+24s: %+8s' %(key, valChamp[key]) for key in valChamp ] ))
 
             #     handle early stopping
-                if early_stop(trainLoss):
+                if early_stop(trainNoImprove):
                     coordinator.request_stop()
                     coordinator.join(threads)
                     log.error("Early stop at step %s with tolerance %s" %(step, FLAGS.earlyStop_tolerance))
-                    log.info("Champion loss is %s" %(champion, ))
             coordinator.request_stop()
             coordinator.join(threads)
             saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=global_step)
