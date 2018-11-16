@@ -76,6 +76,8 @@ tf.app.flags.DEFINE_integer("earlyStop_tolerance", 256,
                             """step tolerance for early stopping if the specified metrics stop to decrease or increase.""")
 tf.app.flags.DEFINE_boolean("restore", False,
                             """restore variables from the latest checkpoint or not""")
+tf.app.flags.DEFINE_string('model_name', 'test',
+                           """model config string for directory name when saving and restoring""")
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # Non-configurable parameters
@@ -295,14 +297,14 @@ def main(argv=None):
                             tf.local_variables_initializer())
 
         saver= tf.train.Saver(tf.global_variables())
-        summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, 'test'), graph= tf.get_default_graph())
+        summaryWriter= tf.summary.FileWriter(logdir= os.path.join(FLAGS.output, FLAGS.model_name), graph= tf.get_default_graph())
         coordinator= tf.train.Coordinator()
         session_config = _get_session_config()
         with tf.Session(config= session_config) as sess:
             if not FLAGS.restore:
                 sess.run(init_op)
             else:
-                saver.restore(sess, save_path= tf.train.latest_checkpoint(os.path.join(FLAGS.output, 'test')))
+                saver.restore(sess, save_path= tf.train.latest_checkpoint(os.path.join(FLAGS.output, FLAGS.model_name)))
             threads= tf.train.start_queue_runners(sess= sess, coord= coordinator)
 
             step = sess.run(global_step)
@@ -357,11 +359,11 @@ def main(argv=None):
                     log.info(' '.join( [ '%+24s: %+8s' %(key, valChamp[key]) for key in valChamp ] ))
 
                 if step % 100 == 0:
-                    saver.save(sess, os.path.join(FLAGS.output, 'test/model.ckpt'), global_step= step)
+                    saver.save(sess, os.path.join(FLAGS.output, FLAGS.model_name, 'model.ckpt'), global_step= step)
 
             coordinator.request_stop()
             coordinator.join(threads)
-            saver.save( sess, os.path.join(FLAGS.output,'test/model.ckpt'), global_step=global_step)
+            saver.save( sess, os.path.join(FLAGS.output, FLAGS.model_name, 'model.ckpt'), global_step=global_step)
 
 
 if __name__ == '__main__':
