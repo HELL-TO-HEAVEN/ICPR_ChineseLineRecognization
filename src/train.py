@@ -74,6 +74,8 @@ tf.app.flags.DEFINE_integer("num_epochs", None,
                             """number of epochs for input queue""")
 tf.app.flags.DEFINE_integer("earlyStop_tolerance", 256,
                             """step tolerance for early stopping if the specified metrics stop to decrease or increase.""")
+tf.app.flags.DEFINE_boolean("restore", False,
+                            """restore variables from the latest checkpoint or not""")
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # Non-configurable parameters
@@ -273,7 +275,7 @@ def main(argv=None):
 
         with tf.device(FLAGS.train_device):
 
-            features,sequence_length = model.convnet_layers( image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
+            # features,sequence_length = model.convnet_layers( image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
             features,sequence_length = denseNet.dense_net(image, width, isTraining) # mode: training mode for dropout layer, True for training while False for testing
 
             logits = model.rnn_layers( features, sequence_length,
@@ -297,8 +299,10 @@ def main(argv=None):
         coordinator= tf.train.Coordinator()
         session_config = _get_session_config()
         with tf.Session(config= session_config) as sess:
-            sess.run(init_op)
-
+            if not FLAGS.restore:
+                sess.run(init_op)
+            else:
+                saver.restore(sess, save_path= tf.train.latest_checkpoint(os.path.join(FLAGS.output, 'test')))
             threads= tf.train.start_queue_runners(sess= sess, coord= coordinator)
 
             step = sess.run(global_step)
@@ -313,9 +317,11 @@ def main(argv=None):
                     feed_dict= {isTraining: True}
                 )
                 trainMetricsDict= OrderedDict(
-                    train_loss = trainLoss,
-                    train_label_error = trainMetricsValue[0],
-                    train_sequence_error = trainMetricsValue[1],
+                    (
+                        ('train_loss', trainLoss),
+                        ('train_label_error', trainMetricsValue[0]),
+                        ('train_sequence_error', trainMetricsValue[1]),
+                    )
                 )
                 trainChamp, trainNoImprove= loss_record(trainMetricsDict, trainChamp, trainNoImprove)
                 log.debug("train step %+6s end." %(step, ))
@@ -330,9 +336,11 @@ def main(argv=None):
                         feed_dict= {isTraining: False}
                     )
                     valMetricsDict= OrderedDict(
-                        val_loss = valLoss,
-                        val_label_error = valMetricsValue[0],
-                        val_sequence_error = valMetricsValue[1],
+                        (
+                            ('val_loss', valLoss),
+                            ('val_label_error', valMetricsValue[0]),
+                            ('val_sequence_error', valMetricsValue[1]),
+                        )
                     )
                     valChamp, valNoImprove= loss_record(valMetricsDict, valChamp, valNoImprove)
                     #     handle early stopping
@@ -348,10 +356,12 @@ def main(argv=None):
                     log.info(' '.join( [ '%+24s: %+8s' %(key, trainChamp[key]) for key in trainChamp ] ))
                     log.info(' '.join( [ '%+24s: %+8s' %(key, valChamp[key]) for key in valChamp ] ))
 
+                if step % 100 == 0:
+                    saver.save(sess, os.path.join(FLAGS.output, 'test/model.ckpt'), global_step= step)
 
             coordinator.request_stop()
             coordinator.join(threads)
-            saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=global_step)
+            saver.save( sess, os.path.join(FLAGS.output,'test/model.ckpt'), global_step=global_step)
 
 
 if __name__ == '__main__':
