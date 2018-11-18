@@ -8,8 +8,8 @@ from tensorflow.contrib import learn
 import numpy as np
 import os
 
-growth_rate = 32
-filter = 64
+growth_rate = 8
+filter = 16
 nb_block = 3
 dropout_rate = 0.5
 
@@ -92,36 +92,37 @@ def dense_block(input_x,nb_layers,layer_name,training):
 
 def dense_net(input_x, widths, training):
 
-    # training = (mode == learn.ModeKeys.TRAIN)
-    # input_x:[ 32 ,width , 3 ]
-    x = conv_layer(input_x,filter=filter,kernel=[3,3],stride=1,layer_name='conv0')
-    # x = Max_Pooling(x,pool_size=[3,3],stride=2)
-    # x: [32,width,64]
-    x = dense_block(input_x = x,nb_layers=4,layer_name='dense_1',training=training)
-    # x: [32,width,64+4*32=192]
-    x = transition_layer(x,128,scope='trans_1',training=training)#transition_layer(x,filters,scope,training)
-    # x: [16,width-1,128]
-    x = dense_block(input_x = x,nb_layers=6,layer_name='dense_2',training=training)
-    # x: [16,width,128+6*32=320]
-    x = transition_layer(x,256,scope='trans_2',training=training)
-    # x: [8,width-1,256]
-    x = Max_Pooling(x,[2,2],2)
-    # x:[4,width/2,256]
-    x = dense_block(input_x =x ,nb_layers=8,layer_name='dense_3',training=training)
-    # x: [4,width,256+8*32=512]
-    x = transition_layer(x,512,scope='trans_3',training=training)
-    # x: [2,width-1,512]
+    with tf.variable_scope('densenet'):
+        # training = (mode == learn.ModeKeys.TRAIN)
+        # input_x:[ 32 ,width , 3 ]
+        x = conv_layer(input_x,filter=filter,kernel=[3,3],stride=1,layer_name='conv0')
+        # x = Max_Pooling(x,pool_size=[3,3],stride=2)
+        # x: [32,width,16]
+        x = dense_block(input_x = x,nb_layers=4,layer_name='dense_1',training=training)
+        # x: [32,width,16+4*8=48]
+        x = transition_layer(x, 32,scope='trans_1',training=training)#transition_layer(x,filters,scope,training)
+        # x: [16,width-1,32]
+        x = dense_block(input_x = x,nb_layers=6,layer_name='dense_2',training=training)
+        # x: [16,width,32+6*8=80]
+        x = transition_layer(x, 64,scope='trans_2',training=training)
+        # x: [8,width-1,64]
+        x = Max_Pooling(x,[2,2],2)
+        # x:[4,width/2,64]
+        x = dense_block(input_x =x ,nb_layers=8,layer_name='dense_3',training=training)
+        # x: [4,width,64+8*8=112]
+        x = transition_layer(x, 96,scope='trans_3',training=training)
+        # x: [2,width-1,96]
 
-    x = Batch_Normalization(x,training=training,scope='linear_batch')
-    x = Relu(x)
-    # x = Global_Average_Pooling(x)  # cifar-10中用于分类
-    x = Max_Pooling(x,[2,2],[2,1])
-    # x: [1, width - 1,512]
+        x = Batch_Normalization(x,training=training,scope='linear_batch')
+        x = Relu(x)
+        # x = Global_Average_Pooling(x)  # cifar-10中用于分类
+        x = Max_Pooling(x,[2,2],[2,1])
+        # x: [1, width - 1,96]
 
-    features = tf.squeeze(x,axis=1,name='features')
-    # calculate resulting sequence length
+        features = tf.squeeze(x,axis=1,name='features')
+        # calculate resulting sequence length
 
-    sequence_length= _get_sequence_length(widths)
+        sequence_length= _get_sequence_length(widths)
 
     return features,sequence_length
 

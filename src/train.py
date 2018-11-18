@@ -20,6 +20,7 @@ from tensorflow.contrib import learn
 from config import log, TRAIN_VAL_SPLIT
 import numpy as np
 from collections import OrderedDict
+from functools import reduce
 import mjsynth
 import model
 import denseNet
@@ -94,17 +95,17 @@ def _get_bucketed_input(data_dir,
                         num_epochs,
                         ):
     """Set up and return image, label, and image width tensors"""
-
-    image, width, label, length, _,_=mjsynth.bucketed_input_pipeline(
-        data_dir,
-        str.split(filename_pattern, ','),
-        batch_size= batch_size,
-        num_threads= num_threads,
-        input_device= input_device,
-        width_threshold= width_threshold,
-        length_threshold= length_threshold,
-        num_epochs= num_epochs
-    )
+    with tf.name_scope('bucketed_input_pipline'):
+        image, width, label, length, _,_=mjsynth.bucketed_input_pipeline(
+            data_dir,
+            str.split(filename_pattern, ','),
+            batch_size= batch_size,
+            num_threads= num_threads,
+            input_device= input_device,
+            width_threshold= width_threshold,
+            length_threshold= length_threshold,
+            num_epochs= num_epochs
+        )
 
     #tf.summary.image('images',image) # Uncomment to see images in TensorBoard
     return image, width, label, length
@@ -120,14 +121,15 @@ def _get_threaded_input(
 ):
     """Set up and return image, label, width and text tensors"""
 
-    image, width, label, length, text, filename = mjsynth.threaded_input_pipeline(
-        data_dir,
-        str.split(filename_pattern, ','),
-        batch_size= batch_size,
-        num_threads= num_threads,
-        num_epochs= num_epochs,  # Repeat for streaming
-        batch_device= input_device,
-        preprocess_device= input_device)
+    with tf.name_scope('threaded_input_pipline'):
+        image, width, label, length, text, filename = mjsynth.threaded_input_pipeline(
+            data_dir,
+            str.split(filename_pattern, ','),
+            batch_size= batch_size,
+            num_threads= num_threads,
+            num_epochs= num_epochs,  # Repeat for streaming
+            batch_device= input_device,
+            preprocess_device= input_device)
 
     return image, width, label, length
 
@@ -138,12 +140,14 @@ def _add_optimizer(loss):
 
         if FLAGS.tune_scope:
             scope=FLAGS.tune_scope
+            opt_var = tf.get_collection( tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
         else:
-            scope="convnet|rnn"
+            opt_var= tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
-        rnn_vars = tf.get_collection( tf.GraphKeys.TRAINABLE_VARIABLES,
-                                       scope=scope)
+        varCount= [reduce(lambda x, y: x * y,  var.shape) for var in opt_var]
+        varSum= reduce(lambda x, y: x + y, varCount)
 
+        log.info("%s trainable variables with %s individual variables in total." %(len(opt_var), varSum))
         # Update batch norm stats [http://stackoverflow.com/questions/43234667]
         extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 
@@ -166,7 +170,7 @@ def _add_optimizer(loss):
                 global_step=tf.train.get_global_step(),
                 learning_rate=learning_rate,
                 optimizer=optimizer,
-                variables=rnn_vars)
+                variables=opt_var)
 
             tf.summary.scalar( 'learning_rate', learning_rate )
 
@@ -227,7 +231,7 @@ def _get_init_pretrained():
 
     return init_fn
 
-def loss_record(metrics, champion= None, noImproveCount= None):
+def _loss_record(metrics, champion= None, noImproveCount= None):
     if champion == None or noImproveCount == None:
         champion= metrics
         noImproveCount= dict(zip(metrics.keys(), [0, ] * len(metrics)))
@@ -241,7 +245,7 @@ def loss_record(metrics, champion= None, noImproveCount= None):
 
     return champion, noImproveCount
 
-def early_stop(noImproveCount):
+def _early_stop(noImproveCount):
     noImprove= list(noImproveCount.values())
     return np.any(np.array(noImprove) > FLAGS.earlyStop_tolerance)
 
@@ -325,7 +329,7 @@ def main(argv=None):
                         ('train_sequence_error', trainMetricsValue[1]),
                     )
                 )
-                trainChamp, trainNoImprove= loss_record(trainMetricsDict, trainChamp, trainNoImprove)
+                trainChamp, trainNoImprove= _loss_record(trainMetricsDict, trainChamp, trainNoImprove)
                 log.debug("train step %+6s end." %(step, ))
 
                 summaryWriter.add_summary(trainSummary, step)
@@ -344,9 +348,9 @@ def main(argv=None):
                             ('val_sequence_error', valMetricsValue[1]),
                         )
                     )
-                    valChamp, valNoImprove= loss_record(valMetricsDict, valChamp, valNoImprove)
+                    valChamp, valNoImprove= _loss_record(valMetricsDict, valChamp, valNoImprove)
                     #     handle early stopping
-                    if early_stop(valNoImprove):
+                    if _early_stop(valNoImprove):
                         coordinator.request_stop()
                         coordinator.join(threads)
                         log.error("Early stop at step %s with tolerance %s" % (step, FLAGS.earlyStop_tolerance))

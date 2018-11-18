@@ -56,6 +56,8 @@ def calc_seq_len(image_width):
     after_fc6 =  after_pool4 - fc6_trim
     seq_len = 2*after_fc6
     return seq_len
+
+
 # def calc_seq_len(image_width):
 #     """Calculate sequence length of given image after CNN processing"""
 #

@@ -32,7 +32,7 @@ layer_params = [ [  64, 3, 'valid', 'conv1', False],
                  [ 512, 3, 'same',  'conv7', False], 
                  [ 512, 3, 'same',  'conv8', True] ] # hpool 3
 
-rnn_size = 2**9    # Dimensionality of all RNN elements' hidden layers
+rnn_size = 2**6    # Dimensionality of all RNN elements' hidden layers
 dropout_rate = 0.5 # For RNN layers (currently not used--uncomment below)
 
 def conv_layer( bottom, params, training ):
@@ -179,7 +179,7 @@ def rnn_layers( features, sequence_length, num_classes ):
     """Build a stack of RNN layers from input features"""
 
     # Input features is [batchSize paddedSeqLen numFeatures]
-    logit_activation = tf.nn.relu
+    logit_activation = tf.nn.softmax
     weight_initializer = tf.contrib.layers.variance_scaling_initializer()
     bias_initializer = tf.constant_initializer( value=0.0 )
 
