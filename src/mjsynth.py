@@ -175,7 +175,7 @@ def _read_word_record(data_queue):
     }
     features = tf.parse_single_example( example_serialized, feature_map )
 
-    image = tf.image.decode_jpeg( features['image/encoded'], channels=1 ) #gray
+    image = tf.image.decode_jpeg( features['image/encoded'], channels=3 ) #gray
     width = tf.cast( features['image/width'], tf.int32) # for ctc_loss
     label = tf.serialize_sparse( features['image/labels'] ) # for batching
     length = features['text/length']
