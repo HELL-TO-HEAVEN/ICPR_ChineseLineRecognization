@@ -15,20 +15,24 @@ dropout_rate = 0.5
 
 
 def conv_layer(input,filter,kernel,stride=1,layer_name="conv"):
-    with tf.name_scope(layer_name):
-        network = tf.layers.conv2d(inputs=input,use_bias=False,filters=filter,kernel_size=kernel,strides=stride,padding='SAME')
-        return network
 
-def Global_Average_Pooling(x,stride=1):
-    """
-    width = np.shape(x)[1]
-    height = np.shape(x)[2]
-    pool_size = [width,height]
-    return tf.layer.average_pooling2d(inputs=x,pool_size=pool_size,strides=stride)
-    # The strdie value does not matter.It is global average pooling without tflearn
-    """
-    return tf.reduce_mean(x,axis= [1, 2], name='Global_avg_pooling')
-    # But maybe you need to install h5py and curses or not
+    kernel_initializer= tf.contrib.layers.variance_scaling_initializer()
+    bias_initialzer= tf.constant_initializer(value= 0.)
+
+    activation_func= tf.nn.relu
+
+    network = tf.layers.conv2d(inputs=input,
+                               filters=filter,
+                               kernel_size=kernel,
+                               strides=stride,
+                               padding='SAME',
+                               data_format= 'channels_last',
+                               activation= activation_func,
+                               use_bias=True,
+                               kernel_initializer= kernel_initializer,
+                               bias_initializer= bias_initialzer,
+                               name= layer_name)
+    return network
 
 def Batch_Normalization(x,training,scope):
     return tf.layers.batch_normalization(x,axis=3,training=training, name= scope)
@@ -143,3 +147,5 @@ def _get_sequence_length(widths):
     sequence_length = tf.reshape(after_second_maxpool,[-1], name='seq_len')
     return sequence_length
 
+if __name__ == '__main__':
+    pass

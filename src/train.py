@@ -165,7 +165,7 @@ def _add_optimizer(loss):
                 learning_rate=learning_rate,
                 beta1=FLAGS.momentum)
 
-            optimizer_ops = tf.contrib.layers.optimize_loss(
+            train_ops = tf.contrib.layers.optimize_loss(
                 loss=loss,
                 global_step=tf.train.get_global_step(),
                 learning_rate=learning_rate,
@@ -174,7 +174,7 @@ def _add_optimizer(loss):
 
             tf.summary.scalar( 'learning_rate', learning_rate )
 
-    return optimizer_ops
+    return train_ops
 
 def _add_metrics(rnn_logits, sequence_length, label, label_length):
     """Create ops for testing (all scalars):
